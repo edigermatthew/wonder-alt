@@ -88,54 +88,89 @@ class Wonder_Alt_Admin {
 	}
 
 	/**
-	 * Intercept attachment.
+	 * Save attribute alt.
 	 * 
-	 * Intercept the attachment and send it to the correct handler.
+	 * Save the alt for the attribute.
 	 * 
-	 * @param array $data                An array of slashed, sanitized, and processed attachment post data.
-	 * @param array $postarr             An array of slashed and sanitized attachment post data, but not processed.
-	 * @param array $unsanitized_postarr An array of slashed yet *unsanitized* and unprocessed attachment post data as originally passed to wp_insert_post().
-	 * @param bool  $update              Whether this is an existing attachment post being updated.
+	 * @since 1.4.0
 	 * 
-	 * @return array The array of data.
+	 * @param int 	  $post_id The post ID.
+	 * @param WP_POST $post    The post object.
+	 * @param bool 	  $update  Whether this is an existing post being updated.
 	 */
-	public function intercept_attachment( $data, $postarr, $unsanitized_postarr, $update ) {
+	public function save_attachment_alt( $post_id ) {
+		$has_alt = get_post_meta( $post_id, '_wp_attachment_image_alt', true );
 
-		if ( ! empty( $postarr['post_title'] ) ) {
+		if ( empty( $has_alt ) || ! $has_alt ) {
+			$alt_text = $this->generate_alt_text_from_title( get_the_title( $post_id ) );
 
-			// If ID is not set in the post array we need to run a wp_schedule_single_event.
-			if ( ! $update ) {
-				update_user_meta( 1, 'last_name', serialize( $postarr ) );
-				wp_schedule_single_event( time() + 30, 'after_attachment_inserted', array( $postarr ) );
-			} else {
-				do_action( 'after_attachment_inserted', $postarr );
+			if ( ! empty( $alt_text ) ) {
+				update_post_meta( $post_id, '_wp_attachment_image_alt', $alt_text );
 			}
-		}		
-		
-		return $data;
+		}
+
+	}
+	
+	/**
+	 * WP ajax save attachment alt.
+	 * 
+	 * Save the attachment in the ajax call.
+	 * 
+	 * @see /wp-admin/includes/ajax-actions.php#3109
+	 * @see wp_ajax_save_attachment
+	 * 
+	 * @since 1.3.0
+	 */
+	public function wp_ajax_save_attachment_alt() {		
+		if ( ! isset( $_REQUEST['id'] ) || ! isset( $_REQUEST['changes'] ) ) {
+			wp_send_json_error();
+		}
+	
+		$id = absint( $_REQUEST['id'] );
+		if ( ! $id ) {
+			wp_send_json_error();
+		}
+	
+		check_ajax_referer( 'update-post_' . $id, 'nonce' );
+	
+		if ( ! current_user_can( 'edit_post', $id ) ) {
+			wp_send_json_error();
+		}
+	
+		$changes = $_REQUEST['changes'];
+		$post    = get_post( $id, ARRAY_A );
+	
+		if ( 'attachment' !== $post['post_type'] ) {
+			wp_send_json_error();
+		}
+
+		// If no alt is coming in the changes.
+		if ( ! isset( $changes['alt'] ) || empty( $changes['alt'] ) ) {
+			$this->update_alt_meta( $id, $post['post_title'] );
+		}
+
+		wp_send_json_success();
 	}
 
 	/**
-	 * Add alt text.
+	 * Update alt meta.
 	 * 
-	 * Add alt text to the attachment - which is saved as a post.
+	 * Update the meta for the image.
 	 * 
-	 * @param An array of slashed and sanitized attachment post data, but not processed.
+	 * @since 1.4.0
+	 * 
+	 * @param int 	 $post_id 	 The ID of the post.
+	 * @param string $post_title The title of the post.
 	 */
-	public function add_alt_text_to_attachment( $postarr ) {
-		$post_title = $postarr['post_title'];
-		$posts 		= get_posts( array( 'post_title' => $post_title, 'post_type' => 'attachment' ) );
+	private function update_alt_meta( $post_id, $post_title ) {
+		$has_alt = get_post_meta( $post_id, '_wp_attachment_image_alt', true );
 
-		if ( ! empty( $posts ) ) {
-			$post_id = $posts[0]->ID;
-			$has_alt = get_post_meta( $post_id, '_wp_attachment_image_alt', true );
-			update_user_meta( 1, 'last_name', serialize( $posts ) );
-			if ( empty( $has_alt ) || ! $has_alt ) {
-				$alt_text = $this->generate_alt_text_from_title( $post_title );
+		// Only on empty alts.
+		if ( empty( $has_alt ) || false === $has_alt ) {
+			$alt_text = $this->generate_alt_text_from_title( $post_title );
 
-				if ( ! empty( $alt_text ) ) {
-					update_post_meta( $post_id, '_wp_attachment_image_alt', $alt_text );
-				}
+			if ( ! empty( $alt_text ) ) {
+				update_post_meta( $post_id, '_wp_attachment_image_alt', $alt_text );
 			}
 		}
 	}
@@ -143,9 +178,11 @@ class Wonder_Alt_Admin {
 	/**
 	 * Generate alt text from title.
 	 * 
-	 * Generate some alt text from the provided title.
+	 * Utility method to generate some alt text from the provided title.
 	 * 
 	 * @access private
+	 * 
+	 * @since 1.3.0 Adding wp_slash and wp_strip_all_tags.
 	 * 
 	 * @param string $post_title
 	 * 
@@ -155,7 +192,7 @@ class Wonder_Alt_Admin {
 		$alt_text = ucwords( str_replace( '_', ' ', str_replace( '-', ' ', $title ) ) );
 
 		if ( ! empty( $alt_text ) ) {
-			return $alt_text;
+			return wp_slash( wp_strip_all_tags( $alt_text, true ) );
 		}
 
 		return;

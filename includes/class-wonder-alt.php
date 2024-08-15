@@ -139,11 +139,13 @@ class Wonder_Alt {
 	private function define_admin_hooks() {
 		$plugin_admin = new Wonder_Alt_Admin( $this->get_plugin_name(), $this->get_version() );
 
+		/*
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_styles' );
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_scripts' );
+		*/
 
-		$this->loader->add_filter( 'wp_insert_attachment_data', $plugin_admin, 'intercept_attachment', 10, 4 );
-		$this->loader->add_action( 'after_attachment_inserted', $plugin_admin, 'add_alt_text_to_attachment' );
+		$this->loader->add_action( 'add_attachment', $plugin_admin, 'save_attachment_alt', 99 );
+		$this->loader->add_action( 'wp_ajax_save-attachment', $plugin_admin, 'wp_ajax_save_attachment_alt', 10 );
 	}
 
 	/**
